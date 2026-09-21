@@ -26,10 +26,11 @@ CHAR_TO_DIR = {"↑": UP, "↓": DOWN, "←": LEFT, "→": RIGHT}
 class Game:
     def __init__(self, levels):
         """
-        levels: 关卡列表，每一项形如 {"grid": ["→·↑", "·↓·"], "mistakes": 3}
+        levels: 关卡列表，每一项形如 {"grid": ["→·↑", "·↓·"], "hearts": 3}
         """
         self.levels = levels
         self.level_index = 0
+        self.endless_num = 1   # 无尽模式当前关号
         self.reset_level()
 
     # ---------- 关卡初始化 ----------
@@ -39,9 +40,13 @@ class Game:
         self.rows = len(self.grid)
         self.cols = len(self.grid[0]) if self.rows else 0
         self.arrows = self._parse_grid(self.grid)
-        self.max_mistakes = level.get("mistakes", 3)
-        self.mistakes = self.max_mistakes
+        self.max_hearts = level.get("hearts", 3)
+        self.hearts = self.max_hearts
+        # 判断是否是无尽模式（用前缀匹配，因为名字里带了关号）
+        self.endless = level.get("name", "").startswith("无尽模式")
         self.status = "playing"   # playing / level_clear / win / game_over
+        self.endless_pending = False   # 无尽模式是否等待换关
+        self.endless_timer = 0         # 换关倒计时（毫秒）
 
     @staticmethod
     def _parse_grid(grid):
@@ -83,7 +88,7 @@ class Game:
         玩家点击格子 (r, c)。
         返回 (result, arrow, blocker)：
           result == "fly"     -> 箭头飞出并被消除
-          result == "blocked" -> 被阻挡，失误次数 -1
+          result == "blocked" -> 被阻挡，爱心 -1
           result == "invalid" -> 该格没有箭头
         """
         for arrow in self.arrows:
@@ -92,19 +97,34 @@ class Game:
                 if blocker is None:
                     self.arrows.remove(arrow)
                     if not self.arrows:
-                        # 本关清空：是最后一关则通关，否则进入“过关”状态
-                        if self.level_index == len(self.levels) - 1:
+                        if self.endless:
+                            # 无尽模式：等飞出动画播完后再换关
+                            self.endless_pending = True
+                            self.endless_timer = 500   # 毫秒
+                        elif self.level_index == len(self.levels) - 1:
                             self.status = "win"
                         else:
                             self.status = "level_clear"
                     return "fly", arrow, None
                 else:
-                    self.mistakes -= 1
-                    if self.mistakes <= 0:
-                        self.mistakes = 0
+                    self.hearts -= 1
+                    if self.hearts <= 0:
+                        self.hearts = 0
                         self.status = "game_over"
                     return "blocked", arrow, blocker
         return "invalid", None, None
+
+    # ---------- 帧更新（无尽模式延迟换关） ----------
+    def update(self, dt):
+        """每帧调用，dt 为毫秒数，处理无尽模式的延迟换关"""
+        if self.endless_pending:
+            self.endless_timer -= dt
+            if self.endless_timer <= 0:
+                self.endless_pending = False
+                from levels import generate_random_level
+                self.endless_num += 1
+                self.levels[self.level_index] = generate_random_level(level_num=self.endless_num)
+                self.reset_level()
 
     # ---------- 关卡切换 ----------
     def next_level(self):
@@ -119,7 +139,6 @@ class Game:
         """
         判断当前关卡是否存在合法消除顺序（贪心验证）：
         反复移除“当前无阻挡”的箭头，若最终能全部移除，则可通关。
-        因为移除箭头只会清空路径、不会新增阻挡，贪心是正确且完备的。
         """
         remaining = list(self.arrows)
         changed = True

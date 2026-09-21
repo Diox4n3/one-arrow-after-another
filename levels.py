@@ -1,51 +1,147 @@
 # -*- coding: utf-8 -*-
 """
 levels.py —— 关卡数据
-
-用字符网格定义每一关：
-  ↑ ↓ ← →  表示四个方向的箭头
-  ·        表示空格
-每关 = {"name": 名称, "grid": [...], "mistakes": 失误次数}
-以后要加关卡，照着格式往 LEVELS 里追加即可。
 """
 
+import random
+
+
 LEVELS = [
-    # 第 1 关：入门。先清掉 ↑ 和 ↓，最后 → 才能飞出
+    # 第 1 关：5×5 新手引导
     {
-        "name": "第 1 关",
+        "name": "第 1 关 · 新手引导",
         "grid": [
-            "→·↑",
-            "·↓·",
+            "·····",
+            "·→·↑·",
+            "··→··",
+            "·↓·←·",
+            "·····",
         ],
-        "mistakes": 3,
+        "hearts": 3,
     },
-    # 第 2 关：单行链式。从最右的 ↑ 开始，从右往左逐个解开
+    # 第 2 关：6×6
     {
         "name": "第 2 关",
         "grid": [
-            "→→→↑··",
+            "······",
+            "·→→·↑·",
+            "······",
+            "·←·↓·→",
+            "······",
+            "······",
         ],
-        "mistakes": 3,
+        "hearts": 3,
     },
-    # 第 3 关：四周的 ↑↓ 先飞，再解右下 ↑，最后中间 → 飞出
+    # 第 3 关：7×7
     {
         "name": "第 3 关",
         "grid": [
-            "↑·↑·",
-            "·→·↑",
-            "↓·↓·",
+            "·······",
+            "·→→·↑··",
+            "·······",
+            "·←·↓·→·",
+            "·······",
+            "·←·→···",
+            "·······",
         ],
-        "mistakes": 3,
+        "hearts": 3,
     },
-    # 第 4 关：上下两排对称链，从外往里清
+    # 第 4 关：8×8
     {
         "name": "第 4 关",
         "grid": [
-            "→→→↑",
-            "↑···",
-            "···↑",
-            "↓←←·",
+            "········",
+            "·→→→↑···",
+            "········",
+            "··↑··↓··",
+            "········",
+            "···←←←←·",
+            "········",
+            "········",
         ],
-        "mistakes": 3,
+        "hearts": 3,
+    },
+    # 第 5 关：8×8
+    {
+        "name": "第 5 关",
+        "grid": [
+            "←···→···",
+            "·↑↑·····",
+            "←·····↑·",
+            "··←····→",
+            "←··↑→···",
+            "·↑→··↓··",
+            "·←↓····↓",
+            "·↑··↓·→·",
+        ],
+        "hearts": 3,
     },
 ]
+
+
+def _is_solvable(grid_str):
+    """用贪心验证一个字符网格是否可以通关"""
+    rows = len(grid_str)
+    cols = len(grid_str[0]) if rows else 0
+    dir_map = {'↑': (-1, 0), '↓': (1, 0), '←': (0, -1), '→': (0, 1)}
+    arrows = []
+    for r in range(rows):
+        for c in range(cols):
+            ch = grid_str[r][c]
+            if ch in dir_map:
+                arrows.append((r, c, ch))
+    remaining = list(arrows)
+    changed = True
+    while remaining and changed:
+        changed = False
+        for arrow in list(remaining):
+            r, c, ch = arrow
+            dr, dc = dir_map[ch]
+            occupied = {(a[0], a[1]) for a in remaining if (a[0], a[1]) != (r, c)}
+            rr, cc = r + dr, c + dc
+            blocked = False
+            while 0 <= rr < rows and 0 <= cc < cols:
+                if (rr, cc) in occupied:
+                    blocked = True
+                    break
+                rr += dr
+                cc += dc
+            if not blocked:
+                remaining.remove(arrow)
+                changed = True
+    return not remaining
+
+
+def generate_random_level(rows=8, cols=8, arrow_count=14, hearts=3, seed=None, level_num=1):
+    """随机生成一个 8×8 的可通关关卡"""
+    rng = random.Random(seed)
+    all_cells = [(r, c) for r in range(rows) for c in range(cols)]
+    rng.shuffle(all_cells)
+    chosen = all_cells[:arrow_count]
+    dirs = ['↑', '↓', '←', '→']
+    for _ in range(200):
+        grid = [['·'] * cols for _ in range(rows)]
+        for (r, c) in chosen:
+            grid[r][c] = rng.choice(dirs)
+        grid_str = [''.join(row) for row in grid]
+        if _is_solvable(grid_str):
+            return {
+                "name": f"无尽模式 · 第 {level_num} 关",
+                "grid": grid_str,
+                "hearts": hearts,
+            }
+    # 保底布局（保证可通关）
+    return {
+        "name": f"无尽模式 · 第 {level_num} 关",
+        "grid": [
+            "········",
+            "·→→→↑···",
+            "········",
+            "··↑··↓··",
+            "········",
+            "···←←←←·",
+            "········",
+            "········",
+        ],
+        "hearts": hearts,
+    }
